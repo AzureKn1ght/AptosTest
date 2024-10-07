@@ -21,6 +21,10 @@ const LP_STORE = `0x1::coin::CoinStore<${LP_COIN}>`;
 const APTOS_COIN = "0x1::aptos_coin::AptosCoin";
 const COIN_STORE = `0x1::coin::CoinStore<${APTOS_COIN}>`;
 
+// SMART CONTRACT ADDRESSES
+const MASTERCHEF =
+  "0x7968a225eba6c99f5f1070aeec1b405757dee939eabcfda43ba91588bf5fccf3";
+
 async function example() {
   console.log("This example module that will test the smart contracts.");
 
@@ -32,10 +36,14 @@ async function example() {
   const privateKey = new Ed25519PrivateKey(KEY!);
   const account = Account.fromPrivateKey({ privateKey });
 
+  // Sample Transaction
+  // const result = await claimRewards(aptos, account);
+  // console.log(result);
+
   // Look up the account's balances
   console.log("\n=== APT Balance ===\n");
   const aptosBalance = await getBalance(aptos, account, COIN_STORE);
-  console.log(`APTOS balance is: ${aptosBalance}`); 
+  console.log(`APTOS balance is: ${aptosBalance}`);
   //decimals: 8
 
   // Look up the account's balances
@@ -54,8 +62,6 @@ async function example() {
   console.log(`LP balance is: ${lpBalance}`);
 }
 
-
-
 const getBalance = async (aptos: any, account: any, coinstore: any) => {
   // Look up the account balances for requested coinstore
   const accountBalance = await aptos.getAccountResource({
@@ -66,12 +72,35 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   return coinBalance;
 };
 
+const claimRewards = async (aptos: any, account: any) => {
+  const transaction = await aptos.transaction.build.simple({
+    sender: account.accountAddress,
+    data: {
+      // The Move entry-function
+      function: MASTERCHEF + `::masterchef::deposit`,
+      typeArguments: [LP_COIN],
+      functionArguments: [0],
+    },
+  });
+
+  // Both signs and submits (although these can be done separately too)
+  const pendingTransaction = await aptos.signAndSubmitTransaction({
+    signer: account,
+    transaction,
+  });
+
+  const executedTransaction = await aptos.waitForTransaction({
+    transactionHash: pendingTransaction.hash,
+  });
+
+  return executedTransaction;
+};
 
 example();
 /**
  * BASIC STRATEGY BREAKDOWN
  *
- * 1. Call the masterchef::deposit function with zero value to receive all rewards
+ * 1. Call the masterchef::deposit function with zero value to receive all rewards [DONE]
  * 2. Get the balance of CAKE tokens by reading the 0x1::coin::CoinStore function
  * 3. Call the router::swap_exact_input function and input the avialable balance
  * 4. Get the balance of APT tokens by reading the 0x1::coin::CoinStore function
