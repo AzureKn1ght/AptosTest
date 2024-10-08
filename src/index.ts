@@ -25,6 +25,13 @@ const COIN_STORE = `0x1::coin::CoinStore<${APTOS_COIN}>`;
 const MASTERCHEF =
   "0x7968a225eba6c99f5f1070aeec1b405757dee939eabcfda43ba91588bf5fccf3";
 
+// State storage object for claims
+var report = [];
+var claims = {
+  previousClaim: "",
+  nextClaim: "",
+};
+
 async function example() {
   console.log("This example module that will test the smart contracts.");
 
@@ -72,28 +79,95 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   return coinBalance;
 };
 
+const swapExactForMin = async (
+  token1: any,
+  amtIn: any,
+  token2: any,
+  minOut: any
+) => {
+  /*
+   public entry fun swap_exact_input<X, Y>(
+        sender: &signer,
+        x_in: u64,
+        y_min_out: u64,
+    )
+  */
+  return null;
+};
+
 const claimRewards = async (aptos: any, account: any) => {
-  const transaction = await aptos.transaction.build.simple({
-    sender: account.accountAddress,
-    data: {
-      // The Move entry-function
-      function: MASTERCHEF + `::masterchef::deposit`,
-      typeArguments: [LP_COIN],
-      functionArguments: [0],
-    },
-  });
+  const result = await depositLP(aptos, account, 0);
+  return result;
+};
 
-  // Both signs and submits (although these can be done separately too)
-  const pendingTransaction = await aptos.signAndSubmitTransaction({
-    signer: account,
-    transaction,
-  });
+// Function for depositing LP tokens into the farming contract
+const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
+  try {
+    console.log(`Try #${tries}...`);
+    console.log("Deposit Liquidity...");
 
-  const executedTransaction = await aptos.waitForTransaction({
-    transactionHash: pendingTransaction.hash,
-  });
+    const transaction = await aptos.transaction.build.simple({
+      sender: account.accountAddress,
+      data: {
+        // The Move entry-function
+        function: MASTERCHEF + `::masterchef::deposit`,
+        typeArguments: [LP_COIN],
+        functionArguments: [amt],
+      },
+    });
+    // Both signs and submits (although these can be done separately too)
+    const pendingTransaction = await aptos.signAndSubmitTransaction({
+      signer: account,
+      transaction,
+    });
+    const executedTransaction = await aptos.waitForTransaction({
+      transactionHash: pendingTransaction.hash,
+    });
 
-  return executedTransaction;
+    // push report
+    const stake = {
+      depositLP: true,
+      amtDeposited: amt / (10.0 ^ 8),
+      tries: tries,
+      url: "https://aptoscan.com/transaction/" + pendingTransaction.hash,
+    };
+
+    return stake;
+  } catch (error) {
+    console.error(error);
+    console.log("Deposit Liquidity Failed!");
+    console.log("retrying...");
+    await delay();
+
+    // maximum 3 tries
+    if (tries >= 3) {
+      report.push({
+        sourceFunc: "depositLP",
+        error: error,
+      });
+      return false;
+    }
+
+    // try again after the delay to see if it works
+    return await depositLP(aptos, account, amt, ++tries);
+  }
+};
+
+// Generate random num Function
+const getRandomNum = (min: any, max: any) => {
+  try {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  } catch (error) {
+    console.error(error);
+  }
+  return max;
+};
+
+// Random Time Delay Function
+const delay = () => {
+  const ms = getRandomNum(196418, 317811);
+  console.log(`delay(${ms})`);
+  return new Promise((resolve) => setTimeout(resolve, ms));
 };
 
 example();
