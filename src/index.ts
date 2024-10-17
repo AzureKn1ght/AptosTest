@@ -48,13 +48,18 @@ async function example() {
   // Sample Transaction
   // const result = await claimRewards(aptos, account);
   // console.log(result);
-  console.log(await getAmountsOut(aptos, 2, APTOS_COIN, USDC_COIN));
+  // console.log(await getAmountsOut(aptos, 1, APTOS_COIN, USDC_COIN));
 
   // Look up the account's balances
   console.log("\n=== APT Balance ===\n");
   const aptosBalance = await getBalance(aptos, account, COIN_STORE);
   console.log(`APTOS balance is: ${aptosBalance}`);
   //decimals: 8
+
+  // Sample Transaction
+  console.log(
+    await swapExactTokens(aptos, account, APTOS_COIN, 1000000, USDC_COIN)
+  );
 
   // Look up the account's balances
   console.log("\n=== CAKE Balance ===\n");
@@ -82,6 +87,7 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   return coinBalance;
 };
 
+// THIS FUNCTION MAY BE REDUNDANT
 const getAmountsOut = async (
   aptos: any,
   amtIn: number,
@@ -103,26 +109,104 @@ const priceRatio = async (aptos: any, coinX: string, coinY: string) => {
     resourceType: ROUTER + "::swap::TokenPairReserve" + path,
   });
   const { reserve_x, reserve_y } = accountBalance;
-  const ratio = reserve_x / reserve_y;
+  const ratio = reserve_y / reserve_x;
 
   console.log(`1 ${coinX}\n= ${ratio} ${coinY}`);
   return ratio;
 };
 
-const swapExactForMin = async (
-  token1: any,
+const swapExactTokens = async (
+  aptos: any,
+  account: any,
+  coinIn: any,
   amtIn: any,
-  token2: any,
-  minOut: any
+  coinOut: any,
+  tries = 1
 ) => {
-  /*
+  try {
+    console.log(`Try #${tries}...`);
+    console.log("Swapping Tokens...");
+
+    // get amount out from DEX router
+    const expectedAmt = await getAmountsOut(aptos, amtIn, coinIn, coinOut);
+
+    //If APTOS
+
+    // calculate 1% slippage for token swapping
+    const amountOutMin = Math.trunc(expectedAmt * 0.99);
+
+    // console log the details
+    console.log("Swapping Tokens...");
+    console.log("Amount In: " + amtIn / 10 ** 8);
+    console.log("Amount Out: " + amountOutMin / 10 ** 8);
+
+    /*
    public entry fun swap_exact_input<X, Y>(
         sender: &signer,
         x_in: u64,
         y_min_out: u64,
     )
   */
-  return null;
+
+    // Call the router::swap_exact_input function and input the avialable balance
+    // execute the swap using the appropriate function
+    const transaction = await aptos.transaction.build.simple({
+      sender: account.accountAddress,
+      data: {
+        // The Move entry-function
+        function: ROUTER + `::router::swap_exact_input`,
+        typeArguments: [coinIn, coinOut],
+        functionArguments: [amtIn, amountOutMin],
+      },
+    });
+    // Both signs and submits (although these can be done separately)
+    const pendingTransaction = await aptos.signAndSubmitTransaction({
+      signer: account,
+      transaction,
+    });
+    // wait for transaction to complete
+    const executedTransaction = await aptos.waitForTransaction({
+      transactionHash: pendingTransaction.hash,
+    });
+
+    // push report
+    const swapped = {
+      swapExactTokens: true,
+      coinIn: coinIn,
+      amtIn: amtIn / 10.0 ** 8,
+      coinOut: coinOut,
+      amtOutMin: amountOutMin / 10.0 ** 8,
+      tries: tries,
+      url: "https://aptoscan.com/transaction/" + pendingTransaction.hash,
+    };
+
+    report.push(swapped);
+    return swapped;
+  } catch (error) {
+    console.error(error);
+    console.log("Swapping Tokens Failed!");
+    console.log("retrying...");
+    await delay();
+
+    // maximum 3 tries
+    if (tries >= 3) {
+      report.push({
+        sourceFunc: "swapExactTokens",
+        error: error,
+      });
+      return false;
+    }
+
+    // try again after the delay
+    return await swapExactTokens(
+      aptos,
+      account,
+      coinIn,
+      amtIn,
+      coinOut,
+      ++tries
+    );
+  }
 };
 
 const claimRewards = async (aptos: any, account: any) => {
@@ -157,11 +241,12 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
     // push report
     const stake = {
       depositLP: true,
-      amtDeposited: amt / (10.0 ^ 8),
+      amtDeposited: amt / 10.0 ** 8,
       tries: tries,
       url: "https://aptoscan.com/transaction/" + pendingTransaction.hash,
     };
 
+    report.push(stake);
     return stake;
   } catch (error) {
     console.error(error);
