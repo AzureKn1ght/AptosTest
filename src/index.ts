@@ -24,6 +24,8 @@ const COIN_STORE = `0x1::coin::CoinStore<${APTOS_COIN}>`;
 // SMART CONTRACT ADDRESSES
 const MASTERCHEF =
   "0x7968a225eba6c99f5f1070aeec1b405757dee939eabcfda43ba91588bf5fccf3";
+const ROUTER =
+  "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa";
 
 // State storage object for claims
 var report = [];
@@ -46,6 +48,7 @@ async function example() {
   // Sample Transaction
   // const result = await claimRewards(aptos, account);
   // console.log(result);
+  console.log(await getAmountsOut(aptos, 2, APTOS_COIN, USDC_COIN));
 
   // Look up the account's balances
   console.log("\n=== APT Balance ===\n");
@@ -77,6 +80,33 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   });
   const coinBalance = Number(accountBalance.coin.value);
   return coinBalance;
+};
+
+const getAmountsOut = async (
+  aptos: any,
+  amtIn: number,
+  coinIn: string,
+  coinOut: string
+) => {
+  const exchangeRate = await priceRatio(aptos, coinIn, coinOut);
+  console.log(exchangeRate);
+  console.log(amtIn);
+
+  return amtIn * exchangeRate;
+};
+
+const priceRatio = async (aptos: any, coinX: string, coinY: string) => {
+  const path = "<" + coinX + "," + coinY + ">";
+  // Look up the token reserves for the pair coinX/coinY
+  const accountBalance = await aptos.getAccountResource({
+    accountAddress: ROUTER,
+    resourceType: ROUTER + "::swap::TokenPairReserve" + path,
+  });
+  const { reserve_x, reserve_y } = accountBalance;
+  const ratio = reserve_x / reserve_y;
+
+  console.log(`1 ${coinX}\n= ${ratio} ${coinY}`);
+  return ratio;
 };
 
 const swapExactForMin = async (
