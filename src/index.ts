@@ -57,14 +57,18 @@ async function example() {
   //decimals: 8
 
   // Sample Transaction
-  console.log(
-    await swapExactTokens(aptos, account, APTOS_COIN, 1000000, USDC_COIN)
-  );
+  // console.log(
+  //   await swapExactTokens(aptos, account, APTOS_COIN, 1000000, USDC_COIN)
+  // );
 
   // Look up the account's balances
   console.log("\n=== CAKE Balance ===\n");
   const cakeBalance = await getBalance(aptos, account, CAKE_STORE);
   console.log(`CAKE balance is: ${cakeBalance}`);
+
+  // console.log(
+  //   await swapExactTokens(aptos, account, CAKE_COIN, cakeBalance, APTOS_COIN)
+  // );
 
   // Look up the account's balances
   console.log("\n=== USDC Balance ===\n");
@@ -87,20 +91,7 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   return coinBalance;
 };
 
-// THIS FUNCTION MAY BE REDUNDANT
-const getAmountsOut = async (
-  aptos: any,
-  amtIn: number,
-  coinIn: string,
-  coinOut: string
-) => {
-  const exchangeRate = await priceRatio(aptos, coinIn, coinOut);
-  console.log(exchangeRate);
-  console.log(amtIn);
-
-  return amtIn * exchangeRate;
-};
-
+// Function for getting the liquidity pool reserve balance ratios 
 const priceRatio = async (aptos: any, coinX: string, coinY: string) => {
   const path = "<" + coinX + "," + coinY + ">";
   // Look up the token reserves for the pair coinX/coinY
@@ -109,12 +100,13 @@ const priceRatio = async (aptos: any, coinX: string, coinY: string) => {
     resourceType: ROUTER + "::swap::TokenPairReserve" + path,
   });
   const { reserve_x, reserve_y } = accountBalance;
-  const ratio = reserve_y / reserve_x;
+  const ratio = reserve_x / reserve_y;
 
   console.log(`1 ${coinX}\n= ${ratio} ${coinY}`);
   return ratio;
 };
 
+// Function for swaping tokens
 const swapExactTokens = async (
   aptos: any,
   account: any,
@@ -127,28 +119,17 @@ const swapExactTokens = async (
     console.log(`Try #${tries}...`);
     console.log("Swapping Tokens...");
 
-    // get amount out from DEX router
-    const expectedAmt = await getAmountsOut(aptos, amtIn, coinIn, coinOut);
-
-    //If APTOS
+    // get amount out from DEX router using exchange rate
+    const exchngeRate = await priceRatio(aptos, coinIn, coinOut);
+    const expectedAmt = amtIn / exchngeRate;
 
     // calculate 1% slippage for token swapping
     const amountOutMin = Math.trunc(expectedAmt * 0.99);
 
     // console log the details
-    console.log("Swapping Tokens...");
-    console.log("Amount In: " + amtIn / 10 ** 8);
-    console.log("Amount Out: " + amountOutMin / 10 ** 8);
+    console.log("Amount In: " + amtIn);
+    console.log("Minimum Out: " + amountOutMin);
 
-    /*
-   public entry fun swap_exact_input<X, Y>(
-        sender: &signer,
-        x_in: u64,
-        y_min_out: u64,
-    )
-  */
-
-    // Call the router::swap_exact_input function and input the avialable balance
     // execute the swap using the appropriate function
     const transaction = await aptos.transaction.build.simple({
       sender: account.accountAddress,
@@ -159,11 +140,13 @@ const swapExactTokens = async (
         functionArguments: [amtIn, amountOutMin],
       },
     });
+
     // Both signs and submits (although these can be done separately)
     const pendingTransaction = await aptos.signAndSubmitTransaction({
       signer: account,
       transaction,
     });
+
     // wait for transaction to complete
     const executedTransaction = await aptos.waitForTransaction({
       transactionHash: pendingTransaction.hash,
@@ -173,9 +156,9 @@ const swapExactTokens = async (
     const swapped = {
       swapExactTokens: true,
       coinIn: coinIn,
-      amtIn: amtIn / 10.0 ** 8,
+      amtIn: amtIn,
       coinOut: coinOut,
-      amtOutMin: amountOutMin / 10.0 ** 8,
+      amtOutMin: amountOutMin,
       tries: tries,
       url: "https://aptoscan.com/transaction/" + pendingTransaction.hash,
     };
@@ -209,6 +192,7 @@ const swapExactTokens = async (
   }
 };
 
+// Function for claiming any pending farming rewards
 const claimRewards = async (aptos: any, account: any) => {
   const result = await depositLP(aptos, account, 0);
   return result;
@@ -280,7 +264,7 @@ const getRandomNum = (min: any, max: any) => {
 
 // Random Time Delay Function
 const delay = () => {
-  const ms = getRandomNum(196418, 317811);
+  const ms = getRandomNum(5387, 9311);
   console.log(`delay(${ms})`);
   return new Promise((resolve) => setTimeout(resolve, ms));
 };
