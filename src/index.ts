@@ -233,7 +233,7 @@ const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
     let aptosBalance = await getBalance(aptos, account, COIN_STORE);
 
     // calculate APT to keep for transaction fees
-    aptosBalance = aptosBalance - 0.11 * 10 ** 8;
+    aptosBalance = aptosBalance - 0.21 * 10 ** 8;
 
     // calculate amount of APT to be swapped for USDC
     const amountForUSDC = Math.trunc(aptosBalance / 2);
@@ -250,12 +250,13 @@ const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
 
     // amount of USDC to add to pool along with min slippage amt
     const usdcAmt = await getBalance(aptos, account, USDC_STORE);
-    const usdcAmtMin = Math.trunc(usdcAmt * 0.89);
+    const usdcAmtMin = Math.trunc(usdcAmt * 0.99);
 
     // amount of APT to add to pool along with the min slippage amt
     //const exchngeRate = await priceRatio(aptos, APTOS_COIN, USDC_COIN);
+    // amount of APT same as USDC
     const aptAmt = amountForUSDC; //Math.trunc((usdcAmt / exchngeRate) * 10 ** 2);
-    const aptAmtMin = Math.trunc(aptAmt * 0.89);
+    const aptAmtMin = Math.trunc(aptAmt * 0.99);
 
     console.log("USDC Amount: " + usdcAmt / 10 ** 6);
     console.log("APT Amount: " + aptAmt / 10 ** 8);
@@ -376,7 +377,7 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
     }
 
     // try again after the delay to see if it works
-    return await depositLP(aptos, account, Math.trunc(amt * 0.999), ++tries); //shouldn't need to reduce on this
+    return await depositLP(aptos, account, amt, ++tries);
   }
 };
 
@@ -438,9 +439,6 @@ const todayDate = () => {
 
 // Job Scheduler Function
 const scheduleNext = async (nextDate: any) => {
-  // apply delay
-  await delay();
-
   // set next job to be 24hrs from now
   nextDate.setHours(nextDate.getHours() + 24);
   claims.nextClaim = nextDate.toString();
