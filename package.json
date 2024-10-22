@@ -9,12 +9,16 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^22.7.4",
+    "@types/node": "^22.7.8",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.2"
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^1.29.0",
-    "dotenv": "^16.4.5"
+    "@types/node-schedule": "^2.1.7",
+    "@types/nodemailer": "^6.4.16",
+    "dotenv": "^16.4.5",
+    "node-schedule": "^2.1.1",
+    "nodemailer": "^6.9.15"
   }
 }

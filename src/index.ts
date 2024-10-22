@@ -5,8 +5,11 @@ import {
   Ed25519PrivateKey,
   Network,
 } from "@aptos-labs/ts-sdk";
+import scheduler from "node-schedule";
+import nodemailer from "nodemailer";
+import fs from "fs";
 require("dotenv").config();
-const { KEY } = process.env;
+const { KEY, EMAIL_ADDR, EMAIL_PW, RECIPIENT } = process.env;
 
 // ADDRESS AND COIN STORE DETAILS FOR ALL THE REQUIRED COINS
 const CAKE_COIN =
@@ -28,59 +31,74 @@ const ROUTER =
   "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa";
 
 // State storage object for claims
-var report = [];
+var report: any[] = [];
 var claims = {
   previousClaim: "",
   nextClaim: "",
 };
 
-async function example() {
-  console.log("This example module that will test the smart contracts.");
+const main = async () => {
+  return await APTCompound();
+};
 
-  // Setup the client
-  const config = new AptosConfig({ network: Network.MAINNET });
-  const aptos = new Aptos(config);
+const APTCompound = async () => {
+  console.log("\n--- APTCompound Start ---");
+  report.push("--- APTCompound Report ---");
+  try {
+    // Setup the client
+    const config = new AptosConfig({ network: Network.MAINNET });
+    const aptos = new Aptos(config);
 
-  // Generate the account credentials
-  const privateKey = new Ed25519PrivateKey(KEY!);
-  const account = Account.fromPrivateKey({ privateKey });
+    // Generate the account credentials
+    const privateKey = new Ed25519PrivateKey(KEY!);
+    const account = Account.fromPrivateKey({ privateKey });
 
-  // Sample Transaction
-  // const result = await claimRewards(aptos, account);
-  // console.log(result);
-  // console.log(await getAmountsOut(aptos, 1, APTOS_COIN, USDC_COIN));
+    //  * BASIC STRATEGY BREAKDOWN *
+    //  * 1. Call the function to receive all rewards
+    const claim = await claimRewards(aptos, account);
 
-  // Look up the account's balances
-  console.log("\n=== APT Balance ===\n");
-  const aptosBalance = await getBalance(aptos, account, COIN_STORE);
-  console.log(`APTOS balance is: ${aptosBalance}`);
-  //decimals: 8
+    //  * 2. Get the balance of CAKE tokens
+    const cakeBal = await getBalance(aptos, account, CAKE_STORE);
 
-  // Sample Transaction
-  // console.log(
-  //   await swapExactTokens(aptos, account, APTOS_COIN, 1000000, USDC_COIN)
-  // );
+    //  * 3. Swap all CAKE to APT tokens
+    const swapCake = await swapExactTokens(
+      aptos,
+      account,
+      CAKE_COIN,
+      cakeBal,
+      APTOS_COIN
+    );
 
-  // Look up the account's balances
-  console.log("\n=== CAKE Balance ===\n");
-  const cakeBalance = await getBalance(aptos, account, CAKE_STORE);
-  console.log(`CAKE balance is: ${cakeBalance}`);
+    //  * 4. Add appropriate amounts of tokens to the LP
+    const addLP = await addRewardstoLP(aptos, account);
 
-  // console.log(
-  //   await swapExactTokens(aptos, account, CAKE_COIN, cakeBalance, APTOS_COIN)
-  // );
+    //  * 5. Get the balance of LP tokens
+    const lpBal = await getBalance(aptos, account, LP_STORE);
 
-  // Look up the account's balances
-  console.log("\n=== USDC Balance ===\n");
-  const usdcBalance = await getBalance(aptos, account, USDC_STORE);
-  console.log(`USDC balance is: ${usdcBalance}`);
+    //  * 6. Deposit the LP tokens into the LP farm
+    const deposit = await depositLP(aptos, account, lpBal);
 
-  // Look up the account's balances
-  console.log("\n=== LP Balance ===\n");
-  const lpBalance = await getBalance(aptos, account, LP_STORE);
-  console.log(`LP balance is: ${lpBalance}`);
-}
+    // function status
+    const compound = {
+      claim: claim,
+      swapCake: swapCake,
+      addLP: addLP,
+      deposit: deposit,
+    };
 
+    report.push(compound);
+    sendReport(report);
+  } catch (error) {
+    report.push("APTCompound failed!");
+    report.push(error);
+
+    // try again tomorrow
+    console.error(error);
+  }
+  scheduleNext(new Date());
+};
+
+// Function for getting the account balance of any particular coin
 const getBalance = async (aptos: any, account: any, coinstore: any) => {
   // Look up the account balances for requested coinstore
   const accountBalance = await aptos.getAccountResource({
@@ -91,7 +109,7 @@ const getBalance = async (aptos: any, account: any, coinstore: any) => {
   return coinBalance;
 };
 
-// Function for getting the liquidity pool reserve balance ratios 
+// Function for getting the liquidity pool reserve balance ratio
 const priceRatio = async (aptos: any, coinX: string, coinY: string) => {
   const path = "<" + coinX + "," + coinY + ">";
   // Look up the token reserves for the pair coinX/coinY
@@ -118,10 +136,17 @@ const swapExactTokens = async (
   try {
     console.log(`Try #${tries}...`);
     console.log("Swapping Tokens...");
+    console.log(coinIn, coinOut);
+    let exchngeRate, expectedAmt;
 
-    // get amount out from DEX router using exchange rate
-    const exchngeRate = await priceRatio(aptos, coinIn, coinOut);
-    const expectedAmt = amtIn / exchngeRate;
+    // get amount out from DEX
+    if (coinIn === USDC_COIN) {
+      exchngeRate = await priceRatio(aptos, coinOut, coinIn);
+      expectedAmt = (amtIn * exchngeRate) / 10 ** 2;
+    } else {
+      exchngeRate = await priceRatio(aptos, coinIn, coinOut);
+      expectedAmt = amtIn / exchngeRate;
+    }
 
     // calculate 1% slippage for token swapping
     const amountOutMin = Math.trunc(expectedAmt * 0.99);
@@ -164,7 +189,7 @@ const swapExactTokens = async (
     };
 
     report.push(swapped);
-    return swapped;
+    return true;
   } catch (error) {
     console.error(error);
     console.log("Swapping Tokens Failed!");
@@ -192,6 +217,108 @@ const swapExactTokens = async (
   }
 };
 
+// Function for creating the LP tokens after claiming the rewards
+const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
+  try {
+    console.log(`Try #${tries}...`);
+    console.log("Adding Liquidity...");
+
+    // if there is existing significant usdc, swap all to APT first
+    const usdcBalance = await getBalance(aptos, account, USDC_STORE);
+    console.log(`USDC balance is: ${usdcBalance}`);
+    if (usdcBalance > 0.1 * 10 ** 6) {
+      report.push({ existing_USDC: usdcBalance });
+      await swapExactTokens(aptos, account, USDC_COIN, usdcBalance, APTOS_COIN);
+    }
+    let aptosBalance = await getBalance(aptos, account, COIN_STORE);
+
+    // calculate APT to keep for transaction fees
+    aptosBalance = aptosBalance - 0.11 * 10 ** 8;
+
+    // calculate amount of APT to be swapped for USDC
+    const amountForUSDC = Math.trunc(aptosBalance / 2);
+
+    // swap half of the APT to USDC
+    const swap = await swapExactTokens(
+      aptos,
+      account,
+      APTOS_COIN,
+      amountForUSDC,
+      USDC_COIN
+    );
+    if (!swap) throw new Error("swap failed");
+
+    // amount of USDC to add to pool along with min slippage amt
+    const usdcAmt = await getBalance(aptos, account, USDC_STORE);
+    const usdcAmtMin = Math.trunc(usdcAmt * 0.89);
+
+    // amount of APT to add to pool along with the min slippage amt
+    //const exchngeRate = await priceRatio(aptos, APTOS_COIN, USDC_COIN);
+    const aptAmt = amountForUSDC; //Math.trunc((usdcAmt / exchngeRate) * 10 ** 2);
+    const aptAmtMin = Math.trunc(aptAmt * 0.89);
+
+    console.log("USDC Amount: " + usdcAmt / 10 ** 6);
+    console.log("APT Amount: " + aptAmt / 10 ** 8);
+
+    // add the appropriate amounts into the liquidity pool
+    const transaction = await aptos.transaction.build.simple({
+      sender: account.accountAddress,
+      data: {
+        // The Move entry-function
+        function: ROUTER + `::router::add_liquidity`,
+        typeArguments: [APTOS_COIN, USDC_COIN],
+        functionArguments: [aptAmt, usdcAmt, aptAmtMin, usdcAmtMin],
+      },
+    });
+
+    // Both signs and submits (although these can be done separately)
+    const pendingTransaction = await aptos.signAndSubmitTransaction({
+      signer: account,
+      transaction,
+    });
+
+    // wait for transaction to complete
+    const executedTransaction = await aptos.waitForTransaction({
+      transactionHash: pendingTransaction.hash,
+    });
+
+    // Look up the account's balances
+    console.log("\n=== LP Balance ===\n");
+    const lpBalance = await getBalance(aptos, account, LP_STORE);
+    console.log(`LP balance is: ${lpBalance}`);
+
+    // push report
+    const addLiquidity = {
+      addRewardstoLP: true,
+      startingAPT: aptosBalance,
+      usdcAmt: usdcAmt,
+      aptAmt: aptAmt,
+      lpBal: lpBalance,
+      tries: tries,
+    };
+
+    report.push(addLiquidity);
+    return addLiquidity;
+  } catch (error) {
+    console.error(error);
+    console.log("Add Liquidity Failed!");
+    console.log("retrying...");
+    await delay();
+
+    // maximum 8 tries
+    if (tries >= 8) {
+      report.push({
+        sourceFunc: "addRewardstoLP",
+        error: error,
+      });
+      return false;
+    }
+
+    // try again after the delay
+    return await addRewardstoLP(aptos, account, ++tries);
+  }
+};
+
 // Function for claiming any pending farming rewards
 const claimRewards = async (aptos: any, account: any) => {
   const result = await depositLP(aptos, account, 0);
@@ -203,6 +330,7 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
   try {
     console.log(`Try #${tries}...`);
     console.log("Deposit Liquidity...");
+    console.log(amt);
 
     const transaction = await aptos.transaction.build.simple({
       sender: account.accountAddress,
@@ -231,15 +359,15 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
     };
 
     report.push(stake);
-    return stake;
+    return true;
   } catch (error) {
     console.error(error);
     console.log("Deposit Liquidity Failed!");
     console.log("retrying...");
     await delay();
 
-    // maximum 3 tries
-    if (tries >= 3) {
+    // maximum 9 tries
+    if (tries >= 9) {
       report.push({
         sourceFunc: "depositLP",
         error: error,
@@ -248,11 +376,11 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
     }
 
     // try again after the delay to see if it works
-    return await depositLP(aptos, account, amt, ++tries);
+    return await depositLP(aptos, account, Math.trunc(amt * 0.999), ++tries); //shouldn't need to reduce on this
   }
 };
 
-// Generate random num Function
+// Generate a random num between min and max
 const getRandomNum = (min: any, max: any) => {
   try {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -262,14 +390,81 @@ const getRandomNum = (min: any, max: any) => {
   return max;
 };
 
-// Random Time Delay Function
+// Random Time Delay
 const delay = () => {
   const ms = getRandomNum(5387, 9311);
   console.log(`delay(${ms})`);
   return new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-example();
+// Send Report Function
+const sendReport = (report: any) => {
+  // get the formatted date
+  const today = todayDate();
+  console.log(report);
+
+  // configure email server
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: EMAIL_ADDR,
+      pass: EMAIL_PW,
+    },
+  });
+
+  // setup mail params
+  const mailOptions = {
+    from: EMAIL_ADDR,
+    to: RECIPIENT,
+    subject: "Aptos Report: " + today,
+    text: JSON.stringify(report, null, 2),
+  };
+
+  // send the email message
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log(error);
+    } else {
+      console.log("Email sent: " + info.response);
+    }
+  });
+};
+
+// Current Date Function
+const todayDate = () => {
+  const today = new Date();
+  return today.toLocaleString("en-GB", { timeZone: "Asia/Singapore" });
+};
+
+// Job Scheduler Function
+const scheduleNext = async (nextDate: any) => {
+  // apply delay
+  await delay();
+
+  // set next job to be 24hrs from now
+  nextDate.setHours(nextDate.getHours() + 24);
+  claims.nextClaim = nextDate.toString();
+  console.log("Next Claim: ", nextDate);
+
+  // schedule next restake
+  scheduler.scheduleJob(nextDate, APTCompound);
+  storeData();
+  return;
+};
+
+// Data Storage Function
+const storeData = async () => {
+  const data = JSON.stringify(claims);
+  fs.writeFile("./claims.json", data, (err) => {
+    if (err) {
+      console.error(err);
+    } else {
+      console.log("Data stored:\n", claims);
+    }
+  });
+};
+
+main();
 /**
  * BASIC STRATEGY BREAKDOWN
  *
