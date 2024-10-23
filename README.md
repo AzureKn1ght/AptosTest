@@ -3,7 +3,7 @@
 
 
 ## Strategy 
-My first test project on Aptos
+My first test project on Aptos! Simple Bot to Restake tokens every 24h on PCS. Creating compound interest with the rewards. 
 
 /**
  * BASIC STRATEGY BREAKDOWN
