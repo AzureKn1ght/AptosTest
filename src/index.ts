@@ -30,15 +30,44 @@ const MASTERCHEF =
 const ROUTER =
   "0xc7efb4076dbe143cbcd98cfaaa929ecfc8f299203dfff63b95ccb6bfe19850fa";
 
-// State storage object for claims
+// State storage object
 var report: any[] = [];
 var claims = {
   previousClaim: "",
   nextClaim: "",
 };
 
+// Main Function
 const main = async () => {
-  return await APTCompound();
+  try {
+    console.log("。。。Aptos Compound Start 。。。");
+    let claimsExists = false;
+
+    // check if claims file exists
+    if (!fs.existsSync("./claims.json")) await storeData();
+
+    // get stored values from file
+    const storedData = JSON.parse(fs.readFileSync("./claims.json").toString());
+
+    // not first launch, check data
+    if ("nextClaim" in storedData) {
+      const nextClaim = new Date(storedData.nextClaim);
+
+      // restore claims schedule
+      if (nextClaim > new Date()) {
+        console.log("Restored Claim: " + nextClaim);
+        scheduler.scheduleJob(nextClaim, APTCompound);
+        claimsExists = true;
+      }
+    }
+
+    //no previous launch
+    if (!claimsExists) {
+      APTCompound();
+    }
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 const APTCompound = async () => {
@@ -86,7 +115,7 @@ const APTCompound = async () => {
       deposit: deposit,
     };
 
-    report.push(compound);
+    report.unshift(compound);
     sendReport(report);
   } catch (error) {
     report.push("APTCompound failed!");
@@ -252,10 +281,8 @@ const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
     const usdcAmt = await getBalance(aptos, account, USDC_STORE);
     const usdcAmtMin = Math.trunc(usdcAmt * 0.99);
 
-    // amount of APT to add to pool along with the min slippage amt
-    //const exchngeRate = await priceRatio(aptos, APTOS_COIN, USDC_COIN);
-    // amount of APT same as USDC
-    const aptAmt = amountForUSDC; //Math.trunc((usdcAmt / exchngeRate) * 10 ** 2);
+    // amt for APT same as USDC
+    const aptAmt = amountForUSDC;
     const aptAmtMin = Math.trunc(aptAmt * 0.99);
 
     console.log("USDC Amount: " + usdcAmt / 10 ** 6);
@@ -291,15 +318,15 @@ const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
     // push report
     const addLiquidity = {
       addRewardstoLP: true,
-      startingAPT: aptosBalance,
-      usdcAmt: usdcAmt,
-      aptAmt: aptAmt,
-      lpBal: lpBalance,
+      startingAPT: aptosBalance / 10 ** 8,
+      usdcAmt: usdcAmt / 10 ** 6,
+      aptAmt: aptAmt / 10 ** 8,
+      lpBal: lpBalance / 10 ** 8,
       tries: tries,
     };
 
     report.push(addLiquidity);
-    return addLiquidity;
+    return true;
   } catch (error) {
     console.error(error);
     console.log("Add Liquidity Failed!");
@@ -323,6 +350,7 @@ const addRewardstoLP = async (aptos: any, account: any, tries = 1) => {
 // Function for claiming any pending farming rewards
 const claimRewards = async (aptos: any, account: any) => {
   const result = await depositLP(aptos, account, 0);
+  claims.previousClaim = new Date().toString();
   return result;
 };
 
@@ -342,7 +370,7 @@ const depositLP = async (aptos: any, account: any, amt: any, tries = 1) => {
         functionArguments: [amt],
       },
     });
-    // Both signs and submits (although these can be done separately too)
+    // Both signs and submits (although can be done separately too)
     const pendingTransaction = await aptos.signAndSubmitTransaction({
       signer: account,
       transaction,
@@ -463,19 +491,3 @@ const storeData = async () => {
 };
 
 main();
-/**
- * BASIC STRATEGY BREAKDOWN
- *
- * 1. Call the masterchef::deposit function with zero value to receive all rewards [DONE]
- * 2. Get the balance of CAKE tokens by reading the 0x1::coin::CoinStore function
- * 3. Call the router::swap_exact_input function and input the avialable balance
- * 4. Get the balance of APT tokens by reading the 0x1::coin::CoinStore function
- * 5. First remove a buffer amt from the balance for gas fee and then divide by 2
- * 6. Call the router::swap_exact_input function to swap half the APT for lzUSDC
- * 7. Get the balance of USDC tokens by reading the 0x1::coin::CoinStore function
- * 8. Calculate the appropriate slippages for USDC and APT for adding to the LP
- * 9. Call the router::add_liquidity function to all the balance of USDC to LP
- * 10.Get the balance of LP tokens by reading the 0x1::coin::CoinStore function
- * 11.Call the masterchef::deposit function with LP tokens value to deposit LP
- *
- **/
