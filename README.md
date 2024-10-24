@@ -26,7 +26,7 @@ You could run it on your desktop just using [Node.js](https://github.com/nodejs/
 ## So we need to transpile to JS 
 npm install
 cd src
-npx tsc index.ts
+npx tsc 
 
 ```
 
