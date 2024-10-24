@@ -3,31 +3,32 @@
 
 
 ## Strategy 
-My first test project on Aptos
+My first test project on Aptos! Simple Bot to Restake tokens every 24h on PCS. Thus creating compound interest. 
 
-/**
- * BASIC STRATEGY BREAKDOWN
- *
- * 1. Call the masterchef::deposit function with zero value to receive all rewards [DONE]
- * 2. Get the balance of CAKE tokens by reading the 0x1::coin::CoinStore function
- * 3. Call the router::swap_exact_input function and input the avialable balance
- * 4. Get the balance of APT tokens by reading the 0x1::coin::CoinStore function
- * 5. First remove a buffer amt from the balance for gas fee and then divide by 2
- * 6. Call the router::swap_exact_input function to swap half the APT for lzUSDC
- * 7. Get the balance of USDC tokens by reading the 0x1::coin::CoinStore function
- * 8. Calculate the appropriate slippages for USDC and APT for adding to the LP
- * 9. Call the router::add_liquidity function to all the balance of USDC to LP
- * 10.Get the balance of LP tokens by reading the 0x1::coin::CoinStore function
- * 11.Call the masterchef::deposit function with LP tokens value to deposit LP
- *
- **/
+### BASIC STRATEGY BREAKDOWN
 
+1. Call the function to receive all rewards (every 24h)
+2. Get the account's current balance of CAKE tokens
+3. Swap all CAKE rewards received to APT tokens
+4. Add appropriate amounts of tokens to the LP
+5. Get the account's balance of LP tokens
+6. Deposit the LP tokens into the LP farm
+
+ 
 # ENV Variables 
 You will need to create a file called *.env* in the root directory, copy the text in *.env.example* and fill in the variables 
 
 
 # How to Run 
 You could run it on your desktop just using [Node.js](https://github.com/nodejs/node) in your terminal. However, on a production environment, it is recommended to use something like [PM2](https://github.com/Unitech/pm2) to run the processes to ensure robust uptime and management. 
+```shell
+## Because we want to run with PM2
+## So we need to transpile to JS 
+npm install
+cd src
+npx tsc index.ts
+
+```
 
 ### APT Compound
 ```
