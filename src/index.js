@@ -356,6 +356,7 @@ const delay = () => {
 const sendReport = (report) => {
     // get the formatted date
     const today = todayDate();
+    report.push(claims);
     console.log(report);
     // configure email server
     const transporter = nodemailer_1.default.createTransport({
