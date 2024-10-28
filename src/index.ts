@@ -458,6 +458,7 @@ const sendReport = (report: any) => {
       console.log("Email sent: " + info.response);
     }
   });
+  report = [];
 };
 
 // Current Date Function

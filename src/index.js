@@ -382,6 +382,7 @@ const sendReport = (report) => {
             console.log("Email sent: " + info.response);
         }
     });
+    report = [];
 };
 // Current Date Function
 const todayDate = () => {
