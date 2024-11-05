@@ -373,6 +373,7 @@ const sendReport = (report) => {
         subject: "Aptos Report: " + today,
         text: JSON.stringify(report, null, 2),
     };
+    report = [];
     // send the email message
     transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
@@ -382,7 +383,6 @@ const sendReport = (report) => {
             console.log("Email sent: " + info.response);
         }
     });
-    report = [];
 };
 // Current Date Function
 const todayDate = () => {
